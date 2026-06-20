@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Видеочат с комнатами (синхронизация)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #1e1e2f; color: #fff; margin: 0; padding: 10px; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .container { background: #2a2a3b; padding: 20px; border-radius: 24px; width: 100%; max-width: 1400px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        h2, h3 { text-align: center; margin-top: 0; color: #aabbff; }
+        .room-selector, .video-chat { transition: all 0.3s; }
+        .hidden { display: none; }
+        #globalStatus { background: #1e1e2f; padding: 12px; border-radius: 40px; margin: 10px 0; text-align: center; font-size: 0.95rem; }
+        .rooms-list { max-height: 300px; overflow-y: auto; margin: 20px 0; border-radius: 16px; background: #1e1e2f; padding: 10px; }
+        .room-item { background: #33334b; margin: 8px 0; padding: 12px 16px; border-radius: 40px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.2s; }
+        .room-item:hover { background: #4a4a6a; }
+        .room-name { font-weight: bold; }
+        .room-lock { font-size: 0.8rem; color: #ffaa33; }
+        .room-participants { font-size: 0.8rem; color: #aaa; }
+        .create-room-form { display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+        .create-room-form input { flex: 1; background: #33334b; border: none; border-radius: 40px; padding: 12px 16px; color: white; font-size: 1rem; }
+        .create-room-form input:focus { outline: 2px solid #5a7eff; }
+        .create-room-form button { background: #5a7eff; border: none; border-radius: 40px; padding: 12px 24px; color: white; font-size: 1rem; cursor: pointer; }
+        .video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin: 20px 0; }
+        .video-wrapper { position: relative; background: #000; border-radius: 16px; overflow: hidden; aspect-ratio: 16 / 9; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        video { width: 100%; height: 100%; object-fit: cover; background: #111; }
+        .video-label { position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; backdrop-filter: blur(4px); pointer-events: none; }
+        .speaking-indicator { position: absolute; top: 8px; right: 8px; width: 12px; height: 12px; border-radius: 50%; background: #3CB371; box-shadow: 0 0 6px #3CB371; transition: 0.1s; }
+        .video-wrapper.speaking .speaking-indicator { background: #ffaa33; box-shadow: 0 0 10px #ffaa33; }
+        .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0; justify-content: center; }
+        .control-btn { padding: 12px 20px; border: none; border-radius: 40px; font-size: 1rem; cursor: pointer; transition: background 0.2s; background: #5a7eff; color: white; }
+        .control-btn.muted { background: #ff5a5a; }
+        .control-btn.active { background: #2e7d32; }
+        .control-btn:disabled { background: #444; cursor: not-allowed; }
+        .participants-section { margin-top: 20px; border-top: 1px solid #444; padding-top: 15px; }
+        #participants { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; margin: 10px 0; }
+        #participants li { background: #33334b; padding: 8px 16px; margin: 4px 0; border-radius: 40px; display: flex; align-items: center; font-size: 0.9rem; }
+        #participants li.speaking { background: #4a4a6a; }
+        .chat-container { margin-top: 20px; border-top: 1px solid #444; padding-top: 15px; }
+        #chat-messages { background: #1e1e2f; border-radius: 20px; padding: 15px; height: 200px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .chat-message { background: #33334b; padding: 10px 14px; border-radius: 18px; max-width: 85%; word-wrap: break-word; align-self: flex-start; }
+        .chat-message.own { background: #5a7eff; align-self: flex-end; }
+        .chat-message .sender { font-weight: bold; font-size: 0.8rem; color: #aabbff; margin-bottom: 4px; }
+        .chat-message.own .sender { color: #e0e0ff; }
+        .chat-message .text { font-size: 0.95rem; }
+        .chat-input-area { display: flex; gap: 8px; }
+        #chat-input { flex: 1; background: #33334b; border: none; border-radius: 40px; padding: 12px 16px; color: white; font-size: 1rem; }
+        #chat-input:focus { outline: 2px solid #5a7eff; }
+        #chat-send { background: #5a7eff; border: none; border-radius: 40px; padding: 0 20px; color: white; font-size: 1.2rem; cursor: pointer; }
+        #chat-send:disabled { background: #444; cursor: not-allowed; }
+        .footer-note { text-align: center; font-size: 0.8rem; color: #aaa; margin-top: 20px; }
+        .error-btn { background: #ff5a5a; color: white; border: none; border-radius: 40px; padding: 10px; width: 100%; margin-top: 10px; font-size: 1rem; cursor: pointer; }
+        .leave-room-btn { background: #ff5a5a; margin-top: 10px; }
+    </style>
+    <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+</head>
+<body>
+<div class="container">
+    <!-- Экран выбора комнаты -->
+    <div id="roomSelector" class="room-selector">
+        <h2>📹 Видеочат с комнатами</h2>
+        <div id="globalStatus" style="background:#1e1e2f; padding:12px; border-radius:40px; margin:10px 0; text-align:center;">Подключение к серверу...</div>
+        <h3>Доступные комнаты</h3>
+        <div id="roomsList" class="rooms-list">Загрузка...</div>
+        <div class="create-room-form">
+            <input type="text" id="newRoomName" placeholder="Название комнаты" autocomplete="off">
+            <input type="password" id="newRoomPassword" placeholder="Пароль (оставьте пустым для открытой комнаты)" autocomplete="off">
+            <button id="createRoomBtn">➕ Создать комнату</button>
+        </div>
+    </div>
+
+    <!-- Экран видеочата (изначально скрыт) -->
+    <div id="videoChat" class="video-chat hidden">
+        <h2>📹 Комната: <span id="currentRoomName"></span></h2>
+        <div id="status">Подключаемся...</div>
+
+        <div id="videoGrid" class="video-grid"></div>
+
+        <div class="controls">
+            <button id="muteMicBtn" class="control-btn">🎤 Микрофон</button>
+            <button id="muteVideoBtn" class="control-btn">📷 Камера</button>
+            <button id="screenShareBtn" class="control-btn">🖥️ Экран</button>
+            <button id="muteChatAudioBtn" class="control-btn">🔊 Звук чата</button>
+        </div>
+
+        <div class="participants-section">
+            <h3>👥 Участники (<span id="participantCount">0</span>)</h3>
+            <ul id="participants"></ul>
+        </div>
+
+        <div class="chat-container">
+            <h3>💬 Чат</h3>
+            <div id="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Введите сообщение..." disabled>
+                <button id="chat-send" disabled>➤</button>
+            </div>
+        </div>
+
+        <div class="footer-note">
+            <a href="https://tactiqwl.github.io/" target="_blank">TactiQwl © 2026</a>
+        </div>
+        <button id="leaveRoomBtn" class="error-btn leave-room-btn">🚪 Выйти из комнаты</button>
+        <button id="reconnectBtn" class="error-btn">🔄 Переподключиться</button>
+    </div>
+</div>
+
+<script>
+    // ---------- Конфигурация ----------
+    const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
+    const GLOBAL_TOPIC = 'global/rooms';
+    const ICE_SERVERS = [
+        { urls: "stun:stun.relay.metered.ca:80" },
+        { urls: "turn:global.relay.metered.ca:80", username: "c4e5b99d2b529224c5aea183", credential: "v9Y0cqiI3axna4vp" },
+        { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "c4e5b99d2b529224c5aea183", credential: "v9Y0cqiI3axna4vp" },
+        { urls: "turn:global.relay.metered.ca:443", username: "c4e5b99d2b529224c5aea183", credential: "v9Y0cqiI3axna4vp" },
+        { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "c4e5b99d2b529224c5aea183", credential: "v9Y0cqiI3axna4vp" }
+    ];
+
+    // ---------- Глобальные переменные ----------
+    let globalClient = null;           // MQTT клиент для управления комнатами
+    let roomClient = null;             // MQTT клиент для конкретной комнаты
+    let rooms = new Map();             // имя комнаты -> { password, participantsCount }
+    let currentRoom = null;            // имя текущей комнаты
+    let currentRoomPassword = null;    // пароль текущей комнаты (если есть)
+
+    // Переменные видеочата (как ранее)
+    let localStream = null;
+    let myId = null;
+    let myDisplayName = '';
+    let peers = {};
+    let participants = new Map();      // peerId -> { name }
+    let speakingStatus = new Map();
+    let videoWrappers = new Map();
+    let localVideoWrapper = null;
+    let micMuted = false;
+    let videoMuted = false;
+    let chatAudioMuted = false;
+    let screenSharingActive = false;
+    let cameraTrack = null;
+    let screenTrack = null;
+    let audioContextMic = null;
+    let micAnalyser = null;
+    let micInterval = null;
+    let lastSpeakingState = false;
+
+    // DOM элементы
+    const roomSelectorDiv = document.getElementById('roomSelector');
+    const videoChatDiv = document.getElementById('videoChat');
+    const globalStatusSpan = document.getElementById('globalStatus');
+    const roomsListDiv = document.getElementById('roomsList');
+    const newRoomNameInput = document.getElementById('newRoomName');
+    const newRoomPasswordInput = document.getElementById('newRoomPassword');
+    const createRoomBtn = document.getElementById('createRoomBtn');
+    const currentRoomNameSpan = document.getElementById('currentRoomName');
+    const statusDiv = document.getElementById('status');
+    const videoGrid = document.getElementById('videoGrid');
+    const participantsList = document.getElementById('participants');
+    const participantCountSpan = document.getElementById('participantCount');
+    const chatMessagesDiv = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+    const muteMicBtn = document.getElementById('muteMicBtn');
+    const muteVideoBtn = document.getElementById('muteVideoBtn');
+    const screenShareBtn = document.getElementById('screenShareBtn');
+    const muteChatAudioBtn = document.getElementById('muteChatAudioBtn');
+    const leaveRoomBtn = document.getElementById('leaveRoomBtn');
+    const reconnectBtn = document.getElementById('reconnectBtn');
+
+    // ---------- Генерация имени пользователя ----------
+    const animals = ['Лис', 'Волк', 'Кот', 'Пёс', 'Орёл', 'Дракон', 'Лев', 'Пингвин', 'Медведь', 'Филин', 'Тигр', 'Голубь', 'Крокодил', 'Бык', 'Баклан', 'Броненосец', 'Ягуар'];
+    const colors = ['Красный', 'Синий', 'Зелёный', 'Жёлтый', 'Фиолетовый', 'Оранжевый', 'Серый', 'Белый'];
+    const reflexive = ['Скрывающийся', 'Прячущийся', 'Крадущийся', 'Бросающийся', 'Прыгающий', 'Перекатывающийся', 'Маскирующийся', 'Наблюдающий', 'Мяукающий', 'Хватающий', 'Ползающий', 'Кусающийся', 'Царапающийся', 'Атакующий'];
+    function generateDisplayName() {
+        const animal = animals[Math.floor(Math.random() * animals.length)];
+        const reflex = reflexive[Math.floor(Math.random() * reflexive.length)];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        return `${reflex} ${color} ${animal}`;
+    }
+    myDisplayName = generateDisplayName();
+
+    // ---------- Вспомогательные функции ----------
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    function addSystemMessage(text, isGlobal = false) {
+        const container = isGlobal ? globalStatusSpan : chatMessagesDiv;
+        if (!container) return;
+        if (isGlobal) {
+            container.textContent = text;
+            return;
+        }
+        const msgDiv = document.createElement('div');
+        msgDiv.style.textAlign = 'center';
+        msgDiv.style.color = '#aaa';
+        msgDiv.style.fontSize = '0.85rem';
+        msgDiv.style.margin = '5px 0';
+        msgDiv.textContent = text;
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function addChatMessage(senderName, text, isOwn = false) {
+        if (!chatMessagesDiv) return;
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'chat-message' + (isOwn ? ' own' : '');
+        msgDiv.innerHTML = `<div class="sender">${escapeHtml(senderName)}</div><div class="text">${escapeHtml(text)}</div>`;
+        chatMessagesDiv.appendChild(msgDiv);
+        chatMessagesDiv.scrollTop = chatMessagesDiv.scrollHeight;
+    }
+
+    // ---------- Управление комнатами (глобальный MQTT) ----------
+    function updateRoomsList() {
+        roomsListDiv.innerHTML = '';
+        if (rooms.size === 0) {
+            roomsListDiv.innerHTML = '<div style="text-align:center;padding:20px;">Нет активных комнат. Создайте первую!</div>';
+            return;
+        }
+        for (let [name, data] of rooms.entries()) {
+            const div = document.createElement('div');
+            div.className = 'room-item';
+            div.innerHTML = `
+                <div>
+                    <span class="room-name">${escapeHtml(name)}</span>
+                    ${data.password ? '<span class="room-lock"> 🔒</span>' : ''}
+                </div>
+                <div class="room-participants">👥 ${data.participantsCount || 0}</div>
+            `;
+            div.addEventListener('click', () => tryJoinRoom(name, data.password));
+            roomsListDiv.appendChild(div);
+        }
+    }
+
+    function publishGlobalMessage(msg) {
+        if (globalClient && globalClient.connected) {
+            globalClient.publish(GLOBAL_TOPIC, JSON.stringify(msg));
+        }
+    }
+
+    // Обработка глобальных сообщений
+    function handleGlobalMessage(message) {
+        switch (message.type) {
+            case 'room_created':
+                if (!rooms.has(message.room)) {
+                    rooms.set(message.room, { password: message.password || null, participantsCount: 1 });
+                    updateRoomsList();
+                } else {
+                    const room = rooms.get(message.room);
+                    if (!room.password && message.password) room.password = message.password;
+                }
+                break;
+            case 'room_deleted':
+                if (rooms.has(message.room)) {
+                    rooms.delete(message.room);
+                    updateRoomsList();
+                }
+                break;
+            case 'participant_joined':
+                if (rooms.has(message.room)) {
+                    const room = rooms.get(message.room);
+                    room.participantsCount = (room.participantsCount || 0) + 1;
+                    updateRoomsList();
+                }
+                break;
+            case 'participant_left':
+                if (rooms.has(message.room)) {
+                    const room = rooms.get(message.room);
+                    room.participantsCount = Math.max(0, (room.participantsCount || 0) - 1);
+                    if (room.participantsCount === 0) {
+                        // Удаляем комнату
+                        publishGlobalMessage({ type: 'room_deleted', room: message.room });
+                    } else {
+                        updateRoomsList();
+                    }
+                }
+                break;
+            case 'room_info':
+                // Приходит от участника, который уже в комнате
+                if (!rooms.has(message.room)) {
+                    rooms.set(message.room, { password: message.password || null, participantsCount: message.participantsCount || 1 });
+                    updateRoomsList();
+                } else {
+                    const existing = rooms.get(message.room);
+                    if (!existing.password && message.password) existing.password = message.password;
+                    existing.participantsCount = message.participantsCount || existing.participantsCount;
+                    updateRoomsList();
+                }
+                break;
+            case 'request_rooms':
+                // Отвечаем информацией о своей комнате, если мы в комнате
+                if (currentRoom) {
+                    publishGlobalMessage({
+                        type: 'room_info',
+                        room: currentRoom,
+                        password: currentRoomPassword,
+                        participantsCount: participants.size
+                    });
+                }
+                break;
+        }
+    }
+
+    function connectGlobal() {
+        globalClient = mqtt.connect(MQTT_BROKER);
+        globalClient.on('connect', () => {
+            globalStatusSpan.textContent = 'Подключено к серверу комнат';
+            globalClient.subscribe(GLOBAL_TOPIC, (err) => {
+                if (err) console.error('Ошибка подписки на глобальный топик', err);
+                // После подписки запрашиваем список комнат
+                publishGlobalMessage({ type: 'request_rooms' });
+            });
+        });
+        globalClient.on('message', (topic, payload) => {
+            try {
+                const msg = JSON.parse(payload.toString());
+                handleGlobalMessage(msg);
+            } catch(e) { console.error('Parse error', e); }
+        });
+        globalClient.on('error', (err) => {
+            console.error('Global MQTT error', err);
+            globalStatusSpan.textContent = 'Ошибка соединения с сервером';
+        });
+        globalClient.on('close', () => {
+            globalStatusSpan.textContent = 'Соединение потеряно. Переподключение...';
+            setTimeout(connectGlobal, 3000);
+        });
+    }
+
+    function createRoom() {
+        const name = newRoomNameInput.value.trim();
+        if (!name) return alert('Введите название комнаты');
+        if (rooms.has(name)) return alert('Комната с таким названием уже существует');
+        const password = newRoomPasswordInput.value.trim() || null;
+        publishGlobalMessage({
+            type: 'room_created',
+            room: name,
+            password: password
+        });
+        // Добавляем локально сразу, чтобы отобразилась
+        rooms.set(name, { password: password, participantsCount: 1 });
+        updateRoomsList();
+        // После создания автоматически входим в комнату
+        tryJoinRoom(name, password);
+    }
+
+    function tryJoinRoom(roomName, password) {
+        // Если комната уже есть в локальном списке, проверяем пароль
+        const roomData = rooms.get(roomName);
+        if (roomData && roomData.password) {
+            const userPassword = prompt(`Введите пароль для комнаты "${roomName}":`);
+            if (userPassword !== roomData.password) {
+                alert('Неверный пароль');
+                return;
+            }
+        } else if (password) {
+            // Если комната не в списке, но мы пытаемся войти по паролю (редкий случай)
+            const userPassword = prompt(`Введите пароль для комнаты "${roomName}":`);
+            if (userPassword !== password) {
+                alert('Неверный пароль');
+                return;
+            }
+        }
+        currentRoom = roomName;
+        currentRoomPassword = roomData ? roomData.password : (password || null);
+        // Отправить сообщение о входе
+        publishGlobalMessage({ type: 'participant_joined', room: roomName });
+        // Скрыть селектор, показать видеочат
+        roomSelectorDiv.classList.add('hidden');
+        videoChatDiv.classList.remove('hidden');
+        currentRoomNameSpan.textContent = roomName;
+        // Запуск видеочата
+        startVideoChat(roomName);
+    }
+
+    // ---------- Видеочат (адаптирован из предыдущего кода) ----------
+    async function startVideoChat(roomTopic) {
+        // Инициализация MQTT для комнаты
+        roomClient = mqtt.connect(MQTT_BROKER);
+        roomClient.on('connect', () => {
+            statusDiv.textContent = 'Подключено к комнате';
+            roomClient.subscribe(roomTopic, (err) => {
+                if (err) console.error('Ошибка подписки на комнату', err);
+            });
+            myId = myDisplayName + '-' + Math.random().toString(36).substring(2, 8);
+            publishRoomMessage({ type: 'join', from: myId, nick: myDisplayName });
+            addParticipant(myId, myDisplayName);
+            // Включить интерфейс
+            muteMicBtn.disabled = false;
+            muteVideoBtn.disabled = false;
+            screenShareBtn.disabled = false;
+            muteChatAudioBtn.disabled = false;
+            chatInput.disabled = false;
+            chatSend.disabled = false;
+        });
+        roomClient.on('message', (topic, payload) => {
+            try {
+                const msg = JSON.parse(payload.toString());
+                handleRoomMessage(msg);
+            } catch(e) { console.error('Room parse error', e); }
+        });
+        roomClient.on('error', (err) => {
+            console.error('Room MQTT error', err);
+            statusDiv.textContent = 'Ошибка соединения в комнате';
+        });
+        roomClient.on('close', () => {
+            statusDiv.textContent = 'Соединение в комнате потеряно';
+            showReconnect();
+        });
+
+        // Запрос медиа
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) cameraTrack = videoTrack;
+            addLocalVideo(localStream);
+            setupMicMeter(localStream);
+        } catch (err) {
+            console.error('Ошибка доступа к медиа', err);
+            statusDiv.textContent = 'Ошибка доступа к камере/микрофону';
+            return;
+        }
+    }
+
+    function publishRoomMessage(msg) {
+        if (roomClient && roomClient.connected && currentRoom) {
+            roomClient.publish(currentRoom, JSON.stringify(msg));
+        }
+    }
+
+    async function handleRoomMessage(message) {
+        if (message.from === myId) return;
+        switch (message.type) {
+            case 'join':
+                if (!participants.has(message.from)) {
+                    addParticipant(message.from, message.nick);
+                    publishRoomMessage({ type: 'join', from: myId, nick: myDisplayName });
+                    if (!peers[message.from]) {
+                        if (myId < message.from) createPeerConnection(message.from, true);
+                        else createPeerConnection(message.from, false);
+                    }
+                }
+                break;
+            case 'speaking':
+                setSpeakingStatus(message.from, message.speaking);
+                break;
+            case 'chat':
+                if (message.text) addChatMessage(message.nick || message.from, message.text);
+                break;
+            case 'offer': {
+                let pc = peers[message.from];
+                if (!pc) pc = createPeerConnection(message.from, false);
+                try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(message.offer));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    publishRoomMessage({ type: 'answer', target: message.from, answer: pc.localDescription, from: myId });
+                } catch (err) { console.error('Offer error', err); }
+                break;
+            }
+            case 'answer': {
+                const pc = peers[message.from];
+                if (pc && pc.signalingState !== 'stable') {
+                    try {
+                        await pc.setRemoteDescription(new RTCSessionDescription(message.answer));
+                    } catch (err) { console.error('Answer error', err); }
+                }
+                break;
+            }
+            case 'candidate': {
+                const pc = peers[message.from];
+                if (pc && message.candidate) {
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+                    } catch (err) { console.error('ICE candidate error', err); }
+                }
+                break;
+            }
+            case 'leave':
+                if (peers[message.from]) {
+                    peers[message.from].close();
+                    delete peers[message.from];
+                }
+                removeParticipant(message.from);
+                break;
+        }
+    }
+
+    // Функции видеочата (копия из предыдущей версии с незначительными изменениями)
+    function createPeerConnection(peerId, initiator) {
+        if (peers[peerId]) return peers[peerId];
+        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        peers[peerId] = pc;
+        if (localStream) {
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        }
+        pc.ontrack = (event) => {
+            const stream = event.streams[0];
+            if (!stream) return;
+            let wrapper = videoWrappers.get(peerId);
+            if (!wrapper) {
+                const info = participants.get(peerId);
+                const name = info ? info.name : peerId;
+                const { video, wrapper: newWrapper } = createVideoElement(peerId, name);
+                video.srcObject = stream;
+                video.muted = chatAudioMuted;
+                wrapper = newWrapper;
+            } else {
+                const video = wrapper.querySelector('video');
+                if (video) video.srcObject = stream;
+            }
+        };
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                publishRoomMessage({ type: 'candidate', target: peerId, candidate: event.candidate, from: myId });
+            }
+        };
+        pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                pc.close();
+                delete peers[peerId];
+                removeParticipant(peerId);
+            }
+        };
+        if (initiator) {
+            pc.createOffer()
+                .then(offer => pc.setLocalDescription(offer))
+                .then(() => publishRoomMessage({ type: 'offer', target: peerId, offer: pc.localDescription, from: myId }))
+                .catch(err => console.error('Offer error', err));
+        }
+        return pc;
+    }
+
+    function createVideoElement(peerId, displayName) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'video-wrapper';
+        wrapper.dataset.peerId = peerId;
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = chatAudioMuted;
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.textContent = displayName;
+        const speakingDot = document.createElement('div');
+        speakingDot.className = 'speaking-indicator';
+        wrapper.appendChild(video);
+        wrapper.appendChild(label);
+        wrapper.appendChild(speakingDot);
+        videoGrid.appendChild(wrapper);
+        videoWrappers.set(peerId, wrapper);
+        return { video, wrapper };
+    }
+
+    function removeVideoElement(peerId) {
+        const wrapper = videoWrappers.get(peerId);
+        if (wrapper) wrapper.remove();
+        videoWrappers.delete(peerId);
+    }
+
+    function addLocalVideo(stream) {
+        if (localVideoWrapper) return;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'video-wrapper';
+        wrapper.dataset.peerId = 'local';
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = true;
+        video.srcObject = stream;
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.textContent = `${myDisplayName} (Вы)`;
+        const speakingDot = document.createElement('div');
+        speakingDot.className = 'speaking-indicator';
+        wrapper.appendChild(video);
+        wrapper.appendChild(label);
+        wrapper.appendChild(speakingDot);
+        videoGrid.prepend(wrapper);
+        localVideoWrapper = wrapper;
+    }
+
+    function addParticipant(peerId, name) {
+        if (participants.has(peerId)) return;
+        participants.set(peerId, { name });
+        renderParticipantsList();
+        if (peerId !== myId) addSystemMessage(`➡️ ${name} присоединился`, false);
+    }
+
+    function removeParticipant(peerId) {
+        if (!participants.has(peerId)) return;
+        const name = participants.get(peerId).name;
+        participants.delete(peerId);
+        speakingStatus.delete(peerId);
+        renderParticipantsList();
+        removeVideoElement(peerId);
+        addSystemMessage(`⬅️ ${name} покинул`, false);
+    }
+
+    function setSpeakingStatus(peerId, speaking) {
+        if (!participants.has(peerId)) return;
+        speakingStatus.set(peerId, speaking);
+        const wrapper = videoWrappers.get(peerId);
+        if (wrapper) {
+            if (speaking) wrapper.classList.add('speaking');
+            else wrapper.classList.remove('speaking');
+        }
+        renderParticipantsList();
+    }
+
+    function renderParticipantsList() {
+        participantsList.innerHTML = '';
+        participants.forEach((info, peerId) => {
+            const li = document.createElement('li');
+            li.textContent = info.name + (peerId === myId ? ' 🐾' : '');
+            if (speakingStatus.get(peerId)) li.classList.add('speaking');
+            participantsList.appendChild(li);
+        });
+        participantCountSpan.textContent = participants.size;
+    }
+
+    async function setupMicMeter(stream) {
+        audioContextMic = new (window.AudioContext || window.webkitAudioContext)();
+        micAnalyser = audioContextMic.createAnalyser();
+        micAnalyser.fftSize = 256;
+        const source = audioContextMic.createMediaStreamSource(stream);
+        source.connect(micAnalyser);
+        const dataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+        if (micInterval) clearInterval(micInterval);
+        micInterval = setInterval(() => {
+            if (micMuted) return;
+            micAnalyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            let avg = sum / dataArray.length / 256;
+            const currentlySpeaking = avg > 0.02;
+            if (currentlySpeaking !== lastSpeakingState) {
+                lastSpeakingState = currentlySpeaking;
+                if (roomClient && roomClient.connected) {
+                    publishRoomMessage({ type: 'speaking', from: myId, speaking: currentlySpeaking });
+                }
+            }
+        }, 100);
+    }
+
+    function stopMeters() {
+        if (micInterval) clearInterval(micInterval);
+        if (audioContextMic) audioContextMic.close();
+    }
+
+    function sendChatMessage() {
+        if (!roomClient || !roomClient.connected) return;
+        const text = chatInput.value.trim();
+        if (!text) return;
+        publishRoomMessage({ type: 'chat', from: myId, nick: myDisplayName, text });
+        addChatMessage(myDisplayName, text, true);
+        chatInput.value = '';
+    }
+
+    // Переключение экрана (упрощённо, но работоспособно)
+    async function replaceVideoTrack(newTrack, oldTrack) {
+        if (!localStream) return;
+        if (oldTrack) {
+            localStream.removeTrack(oldTrack);
+            if (oldTrack.kind === 'video' && oldTrack !== screenTrack) oldTrack.stop();
+        }
+        if (newTrack) {
+            localStream.addTrack(newTrack);
+        }
+        updateLocalVideoStream(localStream);
+        for (const [peerId, pc] of Object.entries(peers)) {
+            try {
+                const senders = pc.getSenders();
+                let videoSender = senders.find(s => s.track && s.track.kind === 'video');
+                if (videoSender && newTrack) {
+                    await videoSender.replaceTrack(newTrack);
+                } else if (newTrack && !videoSender) {
+                    pc.addTrack(newTrack, localStream);
+                }
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                publishRoomMessage({ type: 'offer', target: peerId, offer: pc.localDescription, from: myId });
+            } catch (err) { console.error('Replace track error', err); }
+        }
+    }
+
+    function updateLocalVideoStream(stream) {
+        if (localVideoWrapper) {
+            const video = localVideoWrapper.querySelector('video');
+            if (video) video.srcObject = stream;
+        }
+    }
+
+    screenShareBtn.addEventListener('click', async () => {
+        if (screenSharingActive) {
+            if (screenTrack) {
+                screenTrack.stop();
+                screenTrack = null;
+            }
+            if (cameraTrack) {
+                await replaceVideoTrack(cameraTrack, null);
+                cameraTrack = null;
+            }
+            screenSharingActive = false;
+            screenShareBtn.classList.remove('active');
+        } else {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const newScreenTrack = screenStream.getVideoTracks()[0];
+                if (!cameraTrack && localStream) {
+                    const existingVideoTrack = localStream.getVideoTracks()[0];
+                    if (existingVideoTrack) cameraTrack = existingVideoTrack;
+                }
+                await replaceVideoTrack(newScreenTrack, cameraTrack);
+                screenTrack = newScreenTrack;
+                screenSharingActive = true;
+                screenShareBtn.classList.add('active');
+                newScreenTrack.onended = () => {
+                    if (screenSharingActive) screenShareBtn.click();
+                };
+            } catch(err) { console.error(err); }
+        }
+    });
+
+    muteMicBtn.addEventListener('click', () => {
+        micMuted = !micMuted;
+        muteMicBtn.textContent = micMuted ? '🔇 Микрофон' : '🎤 Микрофон';
+        muteMicBtn.classList.toggle('muted', micMuted);
+        if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = !micMuted);
+        if (micMuted && lastSpeakingState) publishRoomMessage({ type: 'speaking', from: myId, speaking: false });
+    });
+    muteVideoBtn.addEventListener('click', () => {
+        videoMuted = !videoMuted;
+        muteVideoBtn.textContent = videoMuted ? '📷 Камера выкл' : '📷 Камера';
+        muteVideoBtn.classList.toggle('muted', videoMuted);
+        if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = !videoMuted);
+    });
+    muteChatAudioBtn.addEventListener('click', () => {
+        chatAudioMuted = !chatAudioMuted;
+        muteChatAudioBtn.textContent = chatAudioMuted ? '🔇 Звук чата' : '🔊 Звук чата';
+        muteChatAudioBtn.classList.toggle('muted', chatAudioMuted);
+        for (let wrapper of videoWrappers.values()) {
+            const video = wrapper.querySelector('video');
+            if (video && video !== localVideoWrapper?.querySelector('video')) video.muted = chatAudioMuted;
+        }
+    });
+    chatSend.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+    function leaveRoom() {
+        if (roomClient && roomClient.connected) {
+            publishRoomMessage({ type: 'leave', from: myId });
+            roomClient.end();
+        }
+        publishGlobalMessage({ type: 'participant_left', room: currentRoom });
+        if (localStream) localStream.getTracks().forEach(t => t.stop());
+        Object.values(peers).forEach(pc => pc.close());
+        peers = {};
+        participants.clear();
+        speakingStatus.clear();
+        renderParticipantsList();
+        stopMeters();
+        if (localVideoWrapper) localVideoWrapper.remove();
+        localVideoWrapper = null;
+        for (let [peerId] of videoWrappers) removeVideoElement(peerId);
+        videoWrappers.clear();
+        currentRoom = null;
+        roomClient = null;
+        // Возврат к выбору комнаты
+        videoChatDiv.classList.add('hidden');
+        roomSelectorDiv.classList.remove('hidden');
+    }
+
+    function showReconnect() { reconnectBtn.style.display = 'block'; }
+    reconnectBtn.addEventListener('click', () => {
+        reconnectBtn.style.display = 'none';
+        leaveRoom();
+        startVideoChat(currentRoom);
+    });
+    leaveRoomBtn.addEventListener('click', leaveRoom);
+
+    // Запуск
+    connectGlobal();
+    createRoomBtn.addEventListener('click', createRoom);
+</script>
+</body>
+</html>
